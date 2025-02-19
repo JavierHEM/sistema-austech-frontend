@@ -26,47 +26,35 @@ const TIPO_AFILADO_COLORS = {
 };
 
 export function HistorialCliente({ clienteId }) {
-  const { data: historial, isLoading, error } = useQuery({
+  const { data: historialData, isLoading, error } = useQuery({
     queryKey: ['historial-cliente', clienteId],
     queryFn: () => reportesService.getHistorialCliente(clienteId),
     enabled: !!clienteId
   });
 
-  const { afiladosPorMes, afiladosPorTipo, registrosFormateados } = useMemo(() => {
-    if (!historial?.registros) {
-      return { afiladosPorMes: [], afiladosPorTipo: [], registrosFormateados: [] };
+  const { afiladosPorTipo, todosLosAfilados } = useMemo(() => {
+    if (!historialData?.resumen) {
+      return { afiladosPorTipo: [], todosLosAfilados: [] };
     }
 
-    const porMes = historial.resumen?.afilados_por_mes
-      ? Object.entries(historial.resumen.afilados_por_mes).map(([mes, cantidad]) => ({
-          mes,
-          cantidad,
-          name: mes // para compatibilidad con recharts
-        }))
-      : [];
-
-    const porTipo = historial.resumen?.afilados_por_tipo
-      ? Object.entries(historial.resumen.afilados_por_tipo).map(([tipo, cantidad]) => ({
-          tipo,
-          cantidad,
-          name: tipo // para compatibilidad con recharts
-        }))
-      : [];
-
-    const registros = historial.registros.map(registro => ({
-      ...registro,
-      fecha_formateada: new Date(registro.fecha).toLocaleString(),
-      sierra_codigo: registro.sierra?.codigo || 'N/A',
-      tipo_sierra: registro.sierra?.tipo_sierra?.nombre || 'N/A',
-      operario: registro.usuario?.nombre || 'N/A'
+    // Datos para el gráfico de tipos de afilado
+    const porTipo = Object.entries(historialData.resumen.afilados_por_tipo || {}).map(([tipo, cantidad]) => ({
+      tipo,
+      cantidad,
+      name: tipo
     }));
 
-    return {
-      afiladosPorMes: porMes,
-      afiladosPorTipo: porTipo,
-      registrosFormateados: registros
-    };
-  }, [historial]);
+    // Consolidar todos los afilados de todas las sierras
+    const todosAfilados = historialData.sierras.flatMap(sierra => 
+      sierra.historial.map(afilado => ({
+        ...afilado,
+        sierra_codigo: sierra.codigo,
+        tipo_sierra: sierra.tipo_sierra.nombre
+      }))
+    ).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+    return { afiladosPorTipo: porTipo, todosLosAfilados: todosAfilados };
+  }, [historialData]);
 
   const handleExportPDF = () => {
     const headers = [
@@ -78,8 +66,8 @@ export function HistorialCliente({ clienteId }) {
       'Observaciones'
     ];
 
-    const data = registrosFormateados.map(registro => [
-      registro.fecha_formateada,
+    const data = todosLosAfilados.map(registro => [
+      new Date(registro.fecha).toLocaleString(),
       registro.sierra_codigo,
       registro.tipo_sierra,
       registro.tipo_afilado,
@@ -88,13 +76,15 @@ export function HistorialCliente({ clienteId }) {
     ]);
 
     const additionalInfo = {
-      'Cliente': historial.cliente?.nombre,
-      'Total de Afilados': historial.registros?.length || 0,
-      'Período': `${historial.resumen?.fecha_inicio || ''} - ${historial.resumen?.fecha_fin || ''}`
+      'Cliente': historialData.cliente.nombre,
+      'Dirección': historialData.cliente.direccion,
+      'Teléfono': historialData.cliente.telefono,
+      'Total Sierras': historialData.resumen.total_sierras,
+      'Total Afilados': historialData.resumen.total_afilados
     };
 
     exportToPDF(
-      'Historial por Cliente',
+      'Historial de Cliente',
       headers,
       data,
       additionalInfo
@@ -102,8 +92,8 @@ export function HistorialCliente({ clienteId }) {
   };
 
   const handleExportExcel = () => {
-    const data = registrosFormateados.map(registro => ({
-      'Fecha': registro.fecha_formateada,
+    const data = todosLosAfilados.map(registro => ({
+      'Fecha': new Date(registro.fecha).toLocaleString(),
       'Sierra': registro.sierra_codigo,
       'Tipo de Sierra': registro.tipo_sierra,
       'Tipo de Afilado': registro.tipo_afilado,
@@ -147,7 +137,7 @@ export function HistorialCliente({ clienteId }) {
     );
   }
 
-  if (!historial?.registros?.length) {
+  if (!historialData?.sierras?.length) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
@@ -161,23 +151,31 @@ export function HistorialCliente({ clienteId }) {
     <div className="p-6 space-y-6">
       {/* Información del cliente */}
       <div className="bg-gray-700 rounded-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <p className="text-sm text-gray-400">Cliente</p>
-            <p className="text-lg font-medium text-white">{historial.cliente?.nombre}</p>
+            <p className="text-lg font-medium text-white">{historialData.cliente.nombre}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-400">Total de Afilados</p>
-            <p className="text-lg font-medium text-white">{historial.registros.length}</p>
+            <p className="text-sm text-gray-400">Dirección</p>
+            <p className="text-lg font-medium text-white">{historialData.cliente.direccion}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-400">Período</p>
-            <p className="text-lg font-medium text-white">
-              {historial.resumen?.fecha_inicio 
-                ? `${historial.resumen.fecha_inicio} - ${historial.resumen.fecha_fin}`
-                : 'Todo el período'}
-            </p>
+            <p className="text-sm text-gray-400">Teléfono</p>
+            <p className="text-lg font-medium text-white">{historialData.cliente.telefono}</p>
           </div>
+          <div>
+            <p className="text-sm text-gray-400">Total Sierras</p>
+            <p className="text-lg font-medium text-white">{historialData.resumen.total_sierras}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Resumen */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-gray-700 p-4 rounded-lg">
+          <p className="text-sm text-gray-400">Total Afilados</p>
+          <p className="text-2xl font-semibold text-white">{historialData.resumen.total_afilados}</p>
         </div>
       </div>
 
@@ -199,74 +197,37 @@ export function HistorialCliente({ clienteId }) {
         </button>
       </div>
 
-      {/* Gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gráfico de barras - Afilados por mes */}
-        {afiladosPorMes.length > 0 && (
-          <div className="bg-gray-700 p-6 rounded-lg">
-            <h3 className="text-lg font-medium text-white mb-4">
-              Afilados por Mes
-            </h3>
-            <div className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={afiladosPorMes}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis 
-                    dataKey="mes" 
-                    stroke="#9CA3AF"
-                    angle={-45}
-                    textAnchor="end"
-                    height={60}
-                  />
-                  <YAxis stroke="#9CA3AF" />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#1F2937',
-                      border: 'none',
-                      borderRadius: '0.375rem',
-                    }}
-                    labelStyle={{ color: '#D1D5DB' }}
-                  />
-                  <Bar dataKey="cantidad" fill="#4F46E5" name="Cantidad" />
-                  <Legend />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
-
-        {/* Gráfico circular - Tipos de afilado */}
+      {/* Gráfico de tipos de afilado */}
+      <div className="bg-gray-700 p-6 rounded-lg">
+        <h3 className="text-lg font-medium text-white mb-4">
+          Distribución por Tipo de Afilado
+        </h3>
         {afiladosPorTipo.length > 0 && (
-          <div className="bg-gray-700 p-6 rounded-lg">
-            <h3 className="text-lg font-medium text-white mb-4">
-              Distribución por Tipo de Afilado
-            </h3>
-            <div className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={afiladosPorTipo}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    paddingAngle={5}
-                    dataKey="cantidad"
-                    nameKey="tipo"
-                    label={({ tipo, percent, value }) =>
-                      `${tipo} (${value} - ${(percent * 100).toFixed(0)}%)`
-                    }
-                  >
-                    {afiladosPorTipo.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+          <div className="h-[350px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={afiladosPorTipo}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  paddingAngle={5}
+                  dataKey="cantidad"
+                  nameKey="tipo"
+                  label={({ tipo, percent, value }) =>
+                    `${tipo} (${value} - ${(percent * 100).toFixed(0)}%)`
+                  }
+                >
+                  {afiladosPorTipo.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         )}
       </div>
@@ -297,12 +258,12 @@ export function HistorialCliente({ clienteId }) {
             </tr>
           </thead>
           <tbody className="bg-gray-800 divide-y divide-gray-700">
-            {registrosFormateados.map((registro, index) => (
-              <tr key={registro.id || index} className={index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
+            {todosLosAfilados.map((registro, index) => (
+              <tr key={registro.id} className={index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  {registro.fecha_formateada}
+                  {new Date(registro.fecha).toLocaleString()}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-400">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-indigo-400">
                   {registro.sierra_codigo}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">

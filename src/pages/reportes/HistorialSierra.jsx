@@ -1,7 +1,9 @@
 // src/pages/reportes/HistorialSierra.jsx
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { reportesService } from '../../services/reportesService';
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline';
+import { exportToPDF, exportToExcel } from '../../utils/exportUtils';
 import {
   LineChart,
   Line,
@@ -9,9 +11,14 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer
+  ResponsiveContainer,
+  Legend,
+  PieChart,
+  Pie,
+  Cell
 } from 'recharts';
 
+const COLORS = ['#4f46e5', '#7c3aed', '#2563eb'];
 const TIPO_AFILADO_COLORS = {
   'LOMO': 'bg-blue-100 text-blue-800',
   'PECHO': 'bg-yellow-100 text-yellow-800',
@@ -19,13 +26,74 @@ const TIPO_AFILADO_COLORS = {
 };
 
 export function HistorialSierra({ sierraId }) {
-  const { data: historial, isLoading, error } = useQuery({
+  const { data: historialData, isLoading, error } = useQuery({
     queryKey: ['historial-sierra', sierraId],
     queryFn: () => reportesService.getHistorialSierra(sierraId),
     enabled: !!sierraId
   });
 
-  // Validaciones iniciales
+  // Preparar datos para los gráficos usando useMemo
+  const { afiladosPorTipo, historialOrdenado } = useMemo(() => {
+    if (!historialData?.historial) {
+      return { afiladosPorTipo: [], historialOrdenado: [] };
+    }
+
+    const porTipo = Object.entries(historialData.resumen.afilados_por_tipo || {}).map(([tipo, cantidad]) => ({
+      tipo,
+      cantidad,
+      name: tipo
+    }));
+
+    const historial = [...historialData.historial].sort(
+      (a, b) => new Date(b.fecha) - new Date(a.fecha)
+    );
+
+    return { afiladosPorTipo: porTipo, historialOrdenado: historial };
+  }, [historialData]);
+
+  const handleExportPDF = () => {
+    const headers = [
+      'Fecha',
+      'Tipo de Afilado',
+      'Operario',
+      'Observaciones'
+    ];
+
+    const data = historialOrdenado.map(registro => [
+      new Date(registro.fecha).toLocaleString(),
+      registro.tipo_afilado,
+      registro.operario,
+      registro.observaciones || '-'
+    ]);
+
+    const additionalInfo = {
+      'Sierra': historialData.sierra.codigo,
+      'Tipo de Sierra': historialData.sierra.tipo_sierra.nombre,
+      'Cliente': historialData.sierra.cliente.nombre,
+      'Total de Afilados': historialData.resumen.total_afilados,
+      'Último Afilado': new Date(historialData.sierra.fecha_ultimo_afilado).toLocaleDateString()
+    };
+
+    exportToPDF(
+      'Historial de Sierra',
+      headers,
+      data,
+      additionalInfo
+    );
+  };
+
+  const handleExportExcel = () => {
+    const data = historialOrdenado.map(registro => ({
+      'Fecha': new Date(registro.fecha).toLocaleString(),
+      'Tipo de Afilado': registro.tipo_afilado,
+      'Operario': registro.operario,
+      'Observaciones': registro.observaciones || '-'
+    }));
+
+    exportToExcel('Historial_Sierra', data);
+  };
+
+  // Validaciones
   if (!sierraId) {
     return (
       <div className="p-6">
@@ -58,7 +126,7 @@ export function HistorialSierra({ sierraId }) {
     );
   }
 
-  if (!historial || !historial.registros || historial.registros.length === 0) {
+  if (!historialData?.historial?.length) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
@@ -68,47 +136,37 @@ export function HistorialSierra({ sierraId }) {
     );
   }
 
-  // Preparar datos para el gráfico solo si hay registros suficientes
-  const tiempoEntreAfilados = historial.registros.length > 1 
-    ? historial.registros
-        .slice(0, -1)
-        .map((registro, index) => {
-          const fechaActual = new Date(registro.fecha);
-          const fechaSiguiente = new Date(historial.registros[index + 1].fecha);
-          const diasDiferencia = Math.round((fechaSiguiente - fechaActual) / (1000 * 60 * 60 * 24));
-          
-          return {
-            fecha: fechaActual.toLocaleDateString(),
-            dias: diasDiferencia
-          };
-        })
-    : [];
-
-  const handleExportPDF = () => {
-    // Lógica de exportación a PDF
-  };
-
-  const handleExportExcel = () => {
-    // Lógica de exportación a Excel
-  };
-
   return (
     <div className="p-6 space-y-6">
       {/* Información de la sierra */}
       <div className="bg-gray-700 rounded-lg p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
-            <p className="text-sm text-gray-400">Código</p>
-            <p className="text-lg font-medium text-white">{historial.sierra?.codigo || 'N/A'}</p>
+            <p className="text-sm text-gray-400">Sierra</p>
+            <p className="text-lg font-medium text-white">{historialData.sierra.codigo}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-400">Tipo</p>
+            <p className="text-lg font-medium text-white">{historialData.sierra.tipo_sierra.nombre}</p>
           </div>
           <div>
             <p className="text-sm text-gray-400">Cliente</p>
-            <p className="text-lg font-medium text-white">{historial.sierra?.cliente?.nombre || 'N/A'}</p>
+            <p className="text-lg font-medium text-white">{historialData.sierra.cliente.nombre}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-400">Tipo de Sierra</p>
-            <p className="text-lg font-medium text-white">{historial.sierra?.tipo_sierra?.nombre || 'N/A'}</p>
+            <p className="text-sm text-gray-400">Último Afilado</p>
+            <p className="text-lg font-medium text-white">
+              {new Date(historialData.sierra.fecha_ultimo_afilado).toLocaleDateString()}
+            </p>
           </div>
+        </div>
+      </div>
+
+      {/* Resumen */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-gray-700 p-4 rounded-lg">
+          <p className="text-sm text-gray-400">Total Afilados</p>
+          <p className="text-2xl font-semibold text-white">{historialData.resumen.total_afilados}</p>
         </div>
       </div>
 
@@ -130,38 +188,40 @@ export function HistorialSierra({ sierraId }) {
         </button>
       </div>
 
-      {/* Gráfico de tiempo entre afilados */}
-      {tiempoEntreAfilados.length > 0 && (
-        <div className="bg-gray-700 p-6 rounded-lg">
-          <h3 className="text-lg font-medium text-white mb-4">
-            Tiempo entre Afilados (días)
-          </h3>
-          <div className="h-80">
+      {/* Gráfico de tipos de afilado */}
+      <div className="bg-gray-700 p-6 rounded-lg">
+        <h3 className="text-lg font-medium text-white mb-4">
+          Distribución por Tipo de Afilado
+        </h3>
+        {afiladosPorTipo.length > 0 && (
+          <div className="h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={tiempoEntreAfilados}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="fecha" stroke="#9CA3AF" />
-                <YAxis stroke="#9CA3AF" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1F2937',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                  }}
-                  labelStyle={{ color: '#D1D5DB' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="dias" 
-                  stroke="#4F46E5" 
-                  strokeWidth={2}
-                  dot={{ r: 4 }}
-                />
-              </LineChart>
+              <PieChart>
+                <Pie
+                  data={afiladosPorTipo}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  paddingAngle={5}
+                  dataKey="cantidad"
+                  nameKey="tipo"
+                  label={({ tipo, percent, value }) =>
+                    `${tipo} (${value} - ${(percent * 100).toFixed(0)}%)`
+                  }
+                >
+                  {afiladosPorTipo.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Tabla de historial */}
       <div className="overflow-x-auto">
@@ -180,14 +240,11 @@ export function HistorialSierra({ sierraId }) {
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                 Observaciones
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Último Afilado
-              </th>
             </tr>
           </thead>
           <tbody className="bg-gray-800 divide-y divide-gray-700">
-            {historial.registros.map((registro, index) => (
-              <tr key={registro.id || index} className={index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
+            {historialOrdenado.map((registro, index) => (
+              <tr key={registro.id} className={index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                   {new Date(registro.fecha).toLocaleString()}
                 </td>
@@ -197,21 +254,10 @@ export function HistorialSierra({ sierraId }) {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                  {registro.usuario?.nombre || 'N/A'}
+                  {registro.operario}
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-300">
                   {registro.observaciones || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {registro.ultimo_afilado ? (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                      Sí
-                    </span>
-                  ) : (
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                      No
-                    </span>
-                  )}
                 </td>
               </tr>
             ))}

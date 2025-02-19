@@ -2,43 +2,30 @@
 import { api } from '../lib/axios';
 
 export const reportesService = {
-  getHistorialSierra: async (sierraId) => {
+  getEstadisticas: async () => {
     try {
-      const { data } = await api.get(`/api/reportes/sierra/${sierraId}/historial`);
+      console.log('Solicitando estadísticas...');
+      const { data } = await api.get('/api/reportes/estadisticas');
+      console.log('Estadísticas recibidas:', data);
       return data;
     } catch (error) {
-      console.error('Error fetching sierra historial:', error);
+      console.error('Error al obtener estadísticas:', error.response?.data || error.message);
       throw error;
     }
+  },
+
+  getHistorialSierra: async (sierraId) => {
+    const { data } = await api.get(`/api/reportes/sierra/${sierraId}/historial`);
+    return data;
   },
 
   getHistorialCliente: async (clienteId) => {
-    try {
-      const { data } = await api.get(`/api/reportes/cliente/${clienteId}/historial`);
-      return data;
-    } catch (error) {
-      console.error('Error fetching client historial:', error);
-      throw error;
-    }
+    const { data } = await api.get(`/api/reportes/cliente/${clienteId}/historial`);
+    return data;
   },
 
   getSierrasCliente: async (clienteId) => {
-    try {
-      const { data } = await api.get(`/api/reportes/cliente/${clienteId}/sierras`);
-      return data;
-    } catch (error) {
-      console.error('Error fetching client sierras:', error);
-      throw error;
-    }
-  },
-
-  getEstadisticas: async () => {
-    try {
-      const { data } = await api.get('/api/reportes/estadisticas');
-      return data;
-    } catch (error) {
-      console.error('Error fetching statistics:', error);
-      throw error;
-    }
+    const { data } = await api.get(`/api/reportes/cliente/${clienteId}/sierras`);
+    return data;
   }
 };
