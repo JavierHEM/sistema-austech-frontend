@@ -10,23 +10,29 @@ import {
   ChartBarIcon,
   Bars3Icon,
   XMarkIcon,
-  UserCircleIcon
+  UserCircleIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline';
 import { Menu, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
-
-const navigation = [
-  { name: 'Dashboard', href: '/', icon: HomeIcon },
-  { name: 'Clientes', href: '/clientes', icon: UsersIcon },
-  { name: 'Sierras', href: '/sierras', icon: WrenchIcon },
-  { name: 'Historial', href: '/historial', icon: ClipboardDocumentListIcon },
-  { name: 'Reportes', href: '/reportes', icon: ChartBarIcon },
-];
 
 export function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
   const location = useLocation();
+  
+  // Determinar si el usuario es gerente
+  const isGerente = user?.rol === 'GERENTE';
+
+  // Configuración de navegación dinámica
+  const navigation = [
+    { name: 'Dashboard', href: '/', icon: HomeIcon },
+    { name: 'Clientes', href: '/clientes', icon: UsersIcon, requiresRole: ['GERENTE'] },
+    { name: 'Sierras', href: '/sierras', icon: WrenchIcon },
+    { name: 'Historial', href: '/historial', icon: ClipboardDocumentListIcon },
+    { name: 'Reportes', href: '/reportes', icon: ChartBarIcon, requiresRole: ['GERENTE'] },
+    { name: 'Usuarios', href: '/usuarios', icon: UserGroupIcon, requiresRole: ['GERENTE'] }
+  ].filter(item => !item.requiresRole || item.requiresRole.includes(user?.rol));
 
   return (
     <div className="min-h-screen bg-gray-900">

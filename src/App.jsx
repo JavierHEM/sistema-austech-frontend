@@ -7,6 +7,9 @@ import { ClientesPage } from './pages/clientes/ClientesPage';
 import { SierrasPage } from './pages/sierras/SierrasPage';
 import { HistorialPage } from './pages/historial/HistorialPage';
 import { ReportesPage } from './pages/reportes/ReportesPage';
+import { UsuariosPage } from './pages/usuarios/UsuariosPage';
+import { UsuarioDetailPage } from './pages/usuarios/UsuarioDetailPage';
+import { UsuarioFormPage } from './pages/usuarios/UsuarioFormPage';
 import { Layout } from './components/Layout';
 import { useAuth } from './hooks/useAuth';
 
@@ -92,6 +95,40 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['GERENTE']}>
                 <ReportesPage />
+              </ProtectedRoute>
+            }
+          />
+          
+          {/* Rutas de gestión de usuarios */}
+          <Route
+            path="/usuarios"
+            element={
+              <ProtectedRoute allowedRoles={['GERENTE']}>
+                <UsuariosPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/usuarios/nuevo"
+            element={
+              <ProtectedRoute allowedRoles={['GERENTE']}>
+                <UsuarioFormPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/usuarios/:id"
+            element={
+              <ProtectedRoute allowedRoles={['GERENTE']}>
+                <UsuarioDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/usuarios/:id/editar"
+            element={
+              <ProtectedRoute allowedRoles={['GERENTE']}>
+                <UsuarioFormPage />
               </ProtectedRoute>
             }
           />
